@@ -1,0 +1,80 @@
+name: Android APK
+
+# Builds an installable APK every time the web app changes on main,
+# and publishes it as a GitHub Release (newest = "Latest").
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - 'README.md'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: android-apk
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Build Android project
+        env:
+          VERSION_CODE: ${{ github.run_number }}
+          VERSION_NAME: 1.0.${{ github.run_number }}
+        run: bash android-app/build.sh
+
+      - name: Sign APK
+        id: sign
+        env:
+          KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_B64 }}
+          KS_PASS: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+        run: |
+          set -euo pipefail
+          APP_NAME=$(node -p "require('./android-app/capacitor.config.json').appName.replace(/[^A-Za-z0-9]+/g,'-')")
+          OUT="$APP_NAME-${{ github.run_number }}.apk"
+          BT=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)
+          UNSIGNED=android-app/android/app/build/outputs/apk/release/app-release-unsigned.apk
+          "$BT/zipalign" -p -f 4 "$UNSIGNED" aligned.apk
+          if [ -n "${KEYSTORE_B64:-}" ] && [ -n "${KS_PASS:-}" ]; then
+            echo "$KEYSTORE_B64" | base64 -d > release.jks
+            "$BT/apksigner" sign --ks release.jks --ks-pass env:KS_PASS --key-pass env:KS_PASS --out "$OUT" aligned.apk
+            echo "signing=permanent" >> "$GITHUB_OUTPUT"
+          else
+            echo "::warning::No ANDROID_KEYSTORE_B64 / ANDROID_KEYSTORE_PASSWORD secrets. Signing with a throwaway key: this APK installs fine, but the next build won't install over it (uninstall first). Add the secrets to fix."
+            keytool -genkeypair -keystore temp.jks -storepass temppass -keypass temppass -alias temp \
+              -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Temporary"
+            "$BT/apksigner" sign --ks temp.jks --ks-pass pass:temppass --out "$OUT" aligned.apk
+            echo "signing=temporary" >> "$GITHUB_OUTPUT"
+          fi
+          "$BT/apksigner" verify "$OUT"
+          echo "apk=$OUT" >> "$GITHUB_OUTPUT"
+          rm -f release.jks temp.jks aligned.apk
+
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: android-build-${{ github.run_number }}
+          name: Android build ${{ github.run_number }}
+          make_latest: true
+          files: ${{ steps.sign.outputs.apk }}
+          body: |
+            Built from: ${{ github.event.head_commit.message || 'manual run' }}
+            Signing: ${{ steps.sign.outputs.signing == 'permanent' && 'permanent key — installs over the previous version' || 'TEMPORARY key — uninstall the old version before installing this one' }}
+
+            Install on your phone: tap the .apk below, then allow installs from your browser if Android asks.

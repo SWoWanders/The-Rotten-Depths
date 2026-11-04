@@ -1,0 +1,12 @@
+{
+  "name": "android-wrapper",
+  "private": true,
+  "description": "Capacitor Android wrapper for this web app. See android-app/README.md.",
+  "dependencies": {
+    "@capacitor/android": "latest",
+    "@capacitor/core": "latest"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "latest"
+  }
+}

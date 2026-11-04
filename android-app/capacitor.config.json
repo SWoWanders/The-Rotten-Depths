@@ -1,0 +1,9 @@
+{
+  "appId": "io.github.swowanders.rottendepths",
+  "appName": "The Rotten Depths",
+  "webDir": "www",
+  "backgroundColor": "#1A081E",
+  "android": {
+    "allowMixedContent": false
+  }
+}
