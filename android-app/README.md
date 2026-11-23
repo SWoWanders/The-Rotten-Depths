@@ -14,3 +14,5 @@ so every build is signed with the same key and installs over the last one.
 Without them each build uses a throwaway key.
 
 Nothing in here affects the GitHub Pages site.
+
+Signing secrets added Nov 2026: builds now use the permanent key and install over each other.
